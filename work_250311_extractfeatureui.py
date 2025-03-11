@@ -1,3 +1,132 @@
+Skip to content
+Navigation Menu
+meliaph-monitech
+ExtractFeature
+
+Type / to search
+Code
+Issues
+Pull requests
+Actions
+Projects
+Wiki
+Security
+Insights
+Settings
+Files
+Go to file
+t
+requirements.txt
+work_250311_extractfeatureui.py
+ExtractFeature
+/
+work_250311_extractfeatureui.py
+in
+main
+
+Edit
+
+Preview
+Indent mode
+
+Spaces
+Indent size
+
+4
+Line wrap mode
+
+No wrap
+Editing work_250311_extractfeatureui.py file contents
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
 # -*- coding: utf-8 -*-
 """WORK_250311_ExtractFeatureUI.ipynb
 
@@ -88,58 +217,10 @@ if uploaded_file is not None:
                     start = i
                     while i < len(signal) and signal[i] > filter_threshold:
                         i += 1
-                    end = i - 1
-                    start_indices.append(start)
-                    end_indices.append(end)
-                else:
-                    i += 1
-
-            for start, end in zip(start_indices, end_indices):
-                bead_segment = df.iloc[start:end+1]
-                segmented_data.append({
-                    "file": file,
-                    "start_index": start,
-                    "end_index": end,
-                    "data": bead_segment
-                })
-
-        st.success(f"Segmentation completed! Found {len(segmented_data)} bead segments.")
-
-    # Feature selection
-    feature_options = list(extract_advanced_features(np.random.rand(10)).keys())
-    selected_features = st.multiselect("Select Features to Extract", ["All"] + feature_options, default=["All"])
-
-    if "All" in selected_features:
-        selected_features = feature_options
-
-    if st.button("Extract Features"):
-        st.write("Extracting features...")
-        progress_bar = st.progress(0)
-        features_list = []
-
-        for i, segment in enumerate(segmented_data):
-            signal = segment['data'].iloc[:, 0].values
-            file_name = segment['file']
-
-            feature_dict = extract_advanced_features(signal)
-            selected_feature_dict = {k: feature_dict[k] for k in selected_features if k in feature_dict}
-            selected_feature_dict.update({
-                "file": file_name,
-                "start_index": segment["start_index"],
-                "end_index": segment["end_index"]
-            })
-            features_list.append(selected_feature_dict)
-
-            progress_bar.progress((i+1)/len(segmented_data))
-
-        features_df = pd.DataFrame(features_list)
-        features_df['file_name'] = features_df['file'].str.split('/').str[-1]
-        features_df = features_df.rename(columns={'file': 'file_dir'})
-        st.success("Feature extraction complete!")
-
-        # Provide download link
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            features_df.to_excel(writer, index=False)
-        output.seek(0)
-        st.download_button(label="Download Results", data=output, file_name="extracted_features.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+Use Control + Shift + m to toggle the tab key moving focus. Alternatively, use esc then tab to move to the next interactive element on the page.
+@meliaph-monitech
+meliaph-monitech
+Owns this repository
+Committed to this repository in the past day
+Press escape to close this hovercard
+Editing ExtractFeature/work_250311_extractfeatureui.py at main · meliaph-monitech/ExtractFeature
