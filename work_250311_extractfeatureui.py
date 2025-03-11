@@ -1,137 +1,119 @@
 import streamlit as st
+import pandas as pd
 import zipfile
 import os
-import pandas as pd
 import numpy as np
 from scipy.stats import skew, kurtosis
+from scipy.signal import find_peaks
 from scipy.fftpack import fft, fftfreq
-from io import BytesIO
 
-def extract_advanced_features(signal, fs=1):
-    """Extracts various statistical and frequency-based features from a signal."""
-    features = {}
-    n = len(signal)
-    if n == 0:
-        return None
+# Function to reset session state
 
-    # Statistical features
-    features['mean'] = np.mean(signal)
-    features['std'] = np.std(signal)
-    features['var'] = np.var(signal)
-    features['min'] = np.min(signal)
-    features['max'] = np.max(signal)
-    features['median'] = np.median(signal)
-    features['skewness'] = skew(signal)
-    features['kurtosis'] = kurtosis(signal)
+def reset_session():
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
 
-    # Frequency domain features
-    signal_fft = fft(signal)
-    psd = np.abs(signal_fft) ** 2
-    freqs = fftfreq(n, 1/fs)
-    positive_freqs = freqs[:n // 2]
-    positive_psd = psd[:n // 2]
-    features['dominant_frequency'] = positive_freqs[np.argmax(positive_psd)] if len(positive_psd) > 0 else 0
+# Streamlit UI
+st.title("Bead Segmentation & Feature Extraction")
 
-    return features
+# File uploader
+uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"], on_change=reset_session)
 
-st.title("Feature Extraction from Bead Segmentation")
-
-# File upload section
-uploaded_zip = st.file_uploader("Upload ZIP file containing CSVs", type=['zip'])
-
-if uploaded_zip:
-    with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
-        extracted_folder = "extracted_data"
-        os.makedirs(extracted_folder, exist_ok=True)
-        zip_ref.extractall(extracted_folder)
-
-    csv_files = [os.path.join(extracted_folder, f) for f in os.listdir(extracted_folder) if f.endswith('.csv')]
-    if not csv_files:
-        st.error("No CSV files found in the uploaded ZIP.")
-    else:
+if uploaded_file:
+    with zipfile.ZipFile(uploaded_file, "r") as zip_ref:
+        extract_path = "temp_extracted"
+        zip_ref.extractall(extract_path)
+        csv_files = [os.path.join(extract_path, f) for f in os.listdir(extract_path) if f.endswith(".csv")]
+        st.session_state["csv_files"] = csv_files  # Reset stored CSV files
         st.success(f"Loaded {len(csv_files)} CSV files.")
-        sample_df = pd.read_csv(csv_files[0])
-        filter_column = st.selectbox("Select Filter Column", sample_df.columns)
-        threshold = st.number_input("Enter Threshold Value", value=0.0)
 
-        if st.button("Segment Beads"):
-            segmented_data = []
-            metadata = []
-            progress_bar = st.progress(0)
-            
-            for idx, file in enumerate(csv_files):
-                df = pd.read_csv(file)
-                start_indices, end_indices = [], []
-                signal = df[filter_column].to_numpy()
-                i = 0
-                
-                while i < len(signal):
-                    if signal[i] > threshold:
-                        start = i
-                        while i < len(signal) and signal[i] > threshold:
-                            i += 1
-                        end = i - 1
-                        start_indices.append(start)
-                        end_indices.append(end)
-                    else:
+# Select filter column and threshold
+if "csv_files" in st.session_state and st.session_state["csv_files"]:
+    sample_df = pd.read_csv(st.session_state["csv_files"][0])
+    filter_column = st.selectbox("Select filter column", sample_df.columns)
+    filter_threshold = st.number_input("Enter filter threshold", value=0.0)
+    
+    if st.button("Segment Beads"):
+        st.session_state["segmented_data"] = []  # Reset segmented data
+        st.session_state["metadata"] = []
+        for file in st.session_state["csv_files"]:
+            df = pd.read_csv(file)
+            signal = df[filter_column].to_numpy()
+            start_indices, end_indices = [], []
+            i = 0
+            while i < len(signal):
+                if signal[i] > filter_threshold:
+                    start = i
+                    while i < len(signal) and signal[i] > filter_threshold:
                         i += 1
-                
-                for bead_num, (start, end) in enumerate(zip(start_indices, end_indices), start=1):
-                    metadata.append({
-                        "file": file,
-                        "bead_number": bead_num,
-                        "start_index": start,
-                        "end_index": end
-                    })
-                    bead_segment = df.iloc[start:end + 1]
-                    segmented_data.append({
-                        "data": bead_segment,
-                        "file": file,
-                        "bead_number": bead_num,
-                        "start_index": start,
-                        "end_index": end
-                    })
-                
-                progress_bar.progress((idx + 1) / len(csv_files))
-            
-            st.success("Bead segmentation complete!")
+                    end = i - 1
+                    start_indices.append(start)
+                    end_indices.append(end)
+                else:
+                    i += 1
+            segments = list(zip(start_indices, end_indices))
+            for bead_num, (start, end) in enumerate(segments, start=1):
+                st.session_state["metadata"].append({
+                    "file": file,
+                    "bead_number": bead_num,
+                    "start_index": start,
+                    "end_index": end
+                })
+        st.success("Bead segmentation completed!")
 
-        # Feature selection
-        all_features = list(extract_advanced_features(np.array([1, 2, 3])).keys())
-        selected_features = st.multiselect("Select Features to Extract", options=["All"] + all_features, default="All")
+# Feature selection
+if "metadata" in st.session_state and st.session_state["metadata"]:
+    feature_options = [
+        "mean", "std", "var", "min", "max", "median", "skewness", "kurtosis",
+        "peak_to_peak", "energy", "rms", "power", "crest_factor", "form_factor",
+        "pulse_indicator", "margin", "dominant_frequency", "spectral_entropy",
+        "mean_band_power", "max_band_power", "sum_total_band_power", "peak_band_power",
+        "var_band_power", "std_band_power", "skewness_band_power", "kurtosis_band_power",
+        "relative_spectral_peak_per_band", "peak_count", "zero_crossing_rate",
+        "slope", "outlier_count", "extreme_event_duration"
+    ]
+    selected_features = st.multiselect("Select features to extract", ["All"] + feature_options)
+    if "All" in selected_features:
+        selected_features = feature_options
+    
+    if st.button("Extract Features"):
+        extracted_features = []
+        progress_bar = st.progress(0)
+        for i, entry in enumerate(st.session_state["metadata"]):
+            df = pd.read_csv(entry["file"])
+            signal = df.iloc[entry["start_index"]:entry["end_index"] + 1, 0].values
+            features = {}
+            if "mean" in selected_features:
+                features["mean"] = np.mean(signal)
+            if "std" in selected_features:
+                features["std"] = np.std(signal)
+            if "var" in selected_features:
+                features["var"] = np.var(signal)
+            if "min" in selected_features:
+                features["min"] = np.min(signal)
+            if "max" in selected_features:
+                features["max"] = np.max(signal)
+            if "median" in selected_features:
+                features["median"] = np.median(signal)
+            if "skewness" in selected_features:
+                features["skewness"] = skew(signal)
+            if "kurtosis" in selected_features:
+                features["kurtosis"] = kurtosis(signal)
+            features.update({"bead_number": entry["bead_number"], "file": entry["file"]})
+            extracted_features.append(features)
+            progress_bar.progress((i + 1) / len(st.session_state["metadata"]))
         
-        if "All" in selected_features:
-            selected_features = all_features
+        features_df = pd.DataFrame(extracted_features)
+        features_df["file_name"] = features_df["file"].str.split("/").str[-1]
+        features_df = features_df.rename(columns={"file": "file_dir"})
+        st.session_state["features_df"] = features_df
+        st.success("Feature extraction completed!")
 
-        if st.button("Extract Features"):
-            features_list = []
-            progress_bar = st.progress(0)
-            
-            for i, segment in enumerate(segmented_data):
-                signal = segment['data'].iloc[:, 0].values
-                feature_dict = extract_advanced_features(signal)
-                if feature_dict:
-                    feature_dict = {key: feature_dict[key] for key in selected_features}
-                    feature_dict.update({
-                        "file": segment['file'],
-                        "bead_number": segment['bead_number']
-                    })
-                    features_list.append(feature_dict)
-                progress_bar.progress((i + 1) / len(segmented_data))
-            
-            features_df = pd.DataFrame(features_list)
-            features_df['file_name'] = features_df['file'].str.split('/').str[-1]
-            features_df = features_df.rename(columns={'file': 'file_dir'})
-            
-            st.success("Feature extraction complete!")
-            st.dataframe(features_df.head())
-            
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                features_df.to_excel(writer, index=False, sheet_name='Features')
-            st.download_button(
-                label="Download Results",
-                data=output.getvalue(),
-                file_name="extracted_features.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+# Download button
+if "features_df" in st.session_state:
+    st.download_button(
+        label="Download Results", 
+        data=st.session_state["features_df"].to_csv(index=False),
+        file_name="extracted_features.csv",
+        mime="text/csv"
+    )
