@@ -31,6 +31,11 @@ if uploaded_file:
         st.session_state["csv_files"] = csv_files  # Reset stored CSV files
         st.sidebar.success(f"Loaded {len(csv_files)} CSV files.")
 
+# Select CSV file(s) for correlation analysis
+if "csv_files" in st.session_state and st.session_state["csv_files"]:
+    selected_csvs = st.sidebar.multiselect("Select CSV file(s) for correlation", [os.path.basename(f) for f in st.session_state["csv_files"]])
+    aggregation = st.sidebar.checkbox("Aggregate multiple files")
+
 # Select filter column and threshold
 if "csv_files" in st.session_state and st.session_state["csv_files"]:
     sample_df = pd.read_csv(st.session_state["csv_files"][0])
@@ -108,12 +113,18 @@ if "metadata" in st.session_state and st.session_state["metadata"]:
         st.sidebar.success("Feature extraction completed!")
 
 # Correlation Heatmap
-if "features_df" in st.session_state:
-    if st.button("Show Correlation Heatmap"):
-        corr = st.session_state["features_df"].drop(columns=["file_dir", "file_name", "bead_number"], errors='ignore').corr()
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5, ax=ax)
-        st.pyplot(fig)
+if "features_df" in st.session_state and selected_csvs:
+    filtered_df = st.session_state["features_df"][st.session_state["features_df"]["file_name"].isin(selected_csvs)]
+    
+    if aggregation and not filtered_df.empty:
+        filtered_df = filtered_df.groupby("file_name").mean().reset_index()
+    
+    if not filtered_df.empty:
+        if st.button("Show Correlation Heatmap"):
+            corr = filtered_df.drop(columns=["file_dir", "file_name", "bead_number"], errors='ignore').corr()
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5, ax=ax)
+            st.pyplot(fig)
 
 # Download button
 if "features_df" in st.session_state:
