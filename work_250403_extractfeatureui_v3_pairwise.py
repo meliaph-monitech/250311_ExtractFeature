@@ -1,3 +1,4 @@
+## ADVANCED FEATURE EXTRACTION
 import streamlit as st
 import zipfile
 import os
@@ -7,7 +8,6 @@ import matplotlib.pyplot as plt
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
 import numpy as np
-from collections import defaultdict
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
@@ -16,22 +16,37 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     else:
         os.makedirs(extract_dir)
     
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-    except zipfile.BadZipFile:
-        st.error("The uploaded file is not a valid ZIP file.")
-        st.stop()
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_dir)
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
-    if not csv_files:
-        st.error("No CSV files found in the ZIP file.")
-        st.stop()
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
+
+def segment_beads(df, column, threshold):
+    start_indices = []
+    end_indices = []
+    signal = df[column].to_numpy()
+    i = 0
+    while i < len(signal):
+        if signal[i] > threshold:
+            start = i
+            while i < len(signal) and signal[i] > threshold:
+                i += 1
+            end = i - 1
+            start_indices.append(start)
+            end_indices.append(end)
+        else:
+            i += 1
+    return list(zip(start_indices, end_indices))
 
 def extract_advanced_features(signal):
     n = len(signal)
     if n == 0:
-        return [0] * 20
+        return [0] * 20  # Default feature values
+
+    # Handle NaN or Inf values
+    if np.any(np.isnan(signal)) or np.any(np.isinf(signal)):
+        return [0] * 20  # Return default values if data is bad
+
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -42,6 +57,8 @@ def extract_advanced_features(signal):
     peak_to_peak = max_val - min_val
     energy = np.sum(signal**2)
     cv = std_val / mean_val if mean_val != 0 else 0
+
+    # FFT calculations
     signal_fft = fft(signal)
     psd = np.abs(signal_fft)**2
     freqs = fftfreq(n, 1)
@@ -49,13 +66,24 @@ def extract_advanced_features(signal):
     positive_psd = psd[:n // 2]
     psd_normalized = positive_psd / np.sum(positive_psd) if np.sum(positive_psd) > 0 else np.zeros_like(positive_psd)
     spectral_entropy = -np.sum(psd_normalized * np.log2(psd_normalized + 1e-12))
+
     autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
     rms = np.sqrt(np.mean(signal**2))
+
+    # Handle edge cases for np.polyfit
     x = np.arange(n)
-    slope, _ = np.polyfit(x, signal, 1)
+    if len(set(signal)) == 1 or len(signal) < 2:  # Constant or too short signal
+        slope = 0
+    else:
+        try:
+            slope, _ = np.polyfit(x, signal, 1)
+        except np.linalg.LinAlgError:
+            slope = 0
+
     rolling_window = max(10, n // 10)
     rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
     moving_average = np.mean(rolling_mean)
+
     threshold = 3 * std_val
     outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
     extreme_event_duration = 0
@@ -66,12 +94,13 @@ def extract_advanced_features(signal):
         else:
             extreme_event_duration = max(extreme_event_duration, current_duration)
             current_duration = 0
+
     return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
             spectral_entropy, autocorrelation, rms, 
             slope, moving_average, outlier_count, extreme_event_duration]
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Feature Correlation Analysis")
+st.title("Laser Welding Correlation Analysis")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -80,28 +109,62 @@ with st.sidebar:
             f.write(uploaded_file.getbuffer())
         csv_files, extract_dir = extract_zip("temp.zip")
         st.success(f"Extracted {len(csv_files)} CSV files")
+        
         df_sample = pd.read_csv(csv_files[0])
         columns = df_sample.columns.tolist()
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("Enter filtering threshold", value=0.0)
-        analysis_level = st.radio("Select correlation analysis level:",
-                                  ["Single CSV", "Single Bead Number", "Multiple CSVs - Specific Bead", "All Data"])
-        selected_csvs = st.multiselect("Select CSV files", csv_files) if analysis_level != "Single CSV" else [st.selectbox("Select a CSV file", csv_files)]
-        selected_beads = st.multiselect("Select Bead Numbers", list(range(1, 31))) if analysis_level in ["Single Bead Number", "Multiple CSVs - Specific Bead"] else None
-        if st.button("Run Correlation Analysis"):
-            with st.spinner("Computing correlation..."):
-                feature_data = []
-                for file in selected_csvs:
+        
+        if st.button("Segment Beads"):
+            with st.spinner("Segmenting beads..."):
+                bead_segments = {}
+                metadata = []
+                for file in csv_files:
                     df = pd.read_csv(file)
-                    if analysis_level in ["Single Bead Number", "Multiple CSVs - Specific Bead"]:
-                        df = df[df[filter_column].isin(selected_beads)]
-                    segments = df.groupby(filter_column).apply(lambda x: extract_advanced_features(x.iloc[:, 0].values))
-                    for idx, features in segments.items():
-                        feature_data.append([file, idx] + features)
-                feature_columns = ["file", "bead_number"] + [f"Feature_{i}" for i in range(len(features))]
-                feature_df = pd.DataFrame(feature_data, columns=feature_columns)
-                correlation_matrix = feature_df.iloc[:, 2:].corr()
-                fig, ax = plt.subplots(figsize=(10, 8))
-                sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
-                st.pyplot(fig)
-                st.success("Correlation analysis complete!")
+                    segments = segment_beads(df, filter_column, threshold)
+                    if segments:
+                        bead_segments[file] = segments
+                        for bead_num, (start, end) in enumerate(segments, start=1):
+                            metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
+                st.success("Bead segmentation complete")
+                st.session_state["metadata"] = metadata
+        
+        bead_numbers = st.text_input("Enter bead numbers (comma-separated)")
+        if st.button("Select Beads") and "metadata" in st.session_state:
+            selected_beads = [int(b.strip()) for b in bead_numbers.split(",") if b.strip().isdigit()]
+            chosen_bead_data = []
+            for entry in st.session_state["metadata"]:
+                if entry["bead_number"] in selected_beads:
+                    df = pd.read_csv(entry["file"])
+                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
+                    chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
+            st.session_state["chosen_bead_data"] = chosen_bead_data
+            st.success("Beads selected successfully!")
+
+if "chosen_bead_data" in st.session_state:
+    if st.button("Run Correlation Analysis"):
+        with st.spinner("Calculating correlations..."):
+            feature_names = [
+                "Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", 
+                "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
+                "Spectral Entropy", "Autocorrelation", "Root Mean Square (RMS)", "Slope", 
+                "Moving Average", "Outlier Count", "Extreme Event Duration"
+            ]
+            
+            feature_matrix = []
+            for bead_data in st.session_state["chosen_bead_data"]:
+                signal = bead_data["data"].iloc[:, 0].values
+                features = extract_advanced_features(signal)
+                feature_matrix.append(features)
+            
+            df_features = pd.DataFrame(feature_matrix, columns=feature_names)
+            correlation_matrix = df_features.corr()
+            
+            # Plot heatmap
+            plt.figure(figsize=(12, 10))
+            sns.heatmap(
+                correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", cbar=True, 
+                xticklabels=feature_names, yticklabels=feature_names
+            )
+            plt.title("Feature Pairwise Correlation Analysis", fontsize=16)
+            st.pyplot(plt)
