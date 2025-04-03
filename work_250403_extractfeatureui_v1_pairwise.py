@@ -3,12 +3,13 @@ import pandas as pd
 import zipfile
 import os
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from scipy.stats import skew, kurtosis
 from scipy.signal import find_peaks
 from scipy.fftpack import fft, fftfreq
 
 # Function to reset session state
-
 def reset_session():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
@@ -64,13 +65,7 @@ if "csv_files" in st.session_state and st.session_state["csv_files"]:
 # Feature selection
 if "metadata" in st.session_state and st.session_state["metadata"]:
     feature_options = [
-        "mean", "std", "var", "min", "max", "median", "skewness", "kurtosis",
-        "peak_to_peak", "energy", "rms", "power", "crest_factor", "form_factor",
-        "pulse_indicator", "margin", "dominant_frequency", "spectral_entropy",
-        "mean_band_power", "max_band_power", "sum_total_band_power", "peak_band_power",
-        "var_band_power", "std_band_power", "skewness_band_power", "kurtosis_band_power",
-        "relative_spectral_peak_per_band", "peak_count", "zero_crossing_rate",
-        "slope", "outlier_count", "extreme_event_duration"
+        "mean", "std", "var", "min", "max", "median", "skewness", "kurtosis"
     ]
     selected_features = st.multiselect("Select features to extract", ["All"] + feature_options)
     if "All" in selected_features:
@@ -108,6 +103,14 @@ if "metadata" in st.session_state and st.session_state["metadata"]:
         features_df = features_df.rename(columns={"file": "file_dir"})
         st.session_state["features_df"] = features_df
         st.success("Feature extraction completed!")
+
+# Correlation Heatmap
+if "features_df" in st.session_state:
+    if st.button("Show Correlation Heatmap"):
+        corr = st.session_state["features_df"].drop(columns=["file_dir", "file_name", "bead_number"], errors='ignore').corr()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5, ax=ax)
+        st.pyplot(fig)
 
 # Download button
 if "features_df" in st.session_state:
