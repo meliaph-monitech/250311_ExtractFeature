@@ -17,8 +17,11 @@ def reset_session():
 # Streamlit UI
 st.title("Bead Segmentation & Feature Extraction")
 
+# Sidebar
+st.sidebar.header("Upload & Settings")
+
 # File uploader
-uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"], on_change=reset_session)
+uploaded_file = st.sidebar.file_uploader("Upload a ZIP file containing CSV files", type=["zip"], on_change=reset_session)
 
 if uploaded_file:
     with zipfile.ZipFile(uploaded_file, "r") as zip_ref:
@@ -26,15 +29,15 @@ if uploaded_file:
         zip_ref.extractall(extract_path)
         csv_files = [os.path.join(extract_path, f) for f in os.listdir(extract_path) if f.endswith(".csv")]
         st.session_state["csv_files"] = csv_files  # Reset stored CSV files
-        st.success(f"Loaded {len(csv_files)} CSV files.")
+        st.sidebar.success(f"Loaded {len(csv_files)} CSV files.")
 
 # Select filter column and threshold
 if "csv_files" in st.session_state and st.session_state["csv_files"]:
     sample_df = pd.read_csv(st.session_state["csv_files"][0])
-    filter_column = st.selectbox("Select filter column", sample_df.columns)
-    filter_threshold = st.number_input("Enter filter threshold", value=0.0)
+    filter_column = st.sidebar.selectbox("Select filter column", sample_df.columns)
+    filter_threshold = st.sidebar.number_input("Enter filter threshold", value=0.0)
     
-    if st.button("Segment Beads"):
+    if st.sidebar.button("Segment Beads"):
         st.session_state["segmented_data"] = []  # Reset segmented data
         st.session_state["metadata"] = []
         for file in st.session_state["csv_files"]:
@@ -60,18 +63,18 @@ if "csv_files" in st.session_state and st.session_state["csv_files"]:
                     "start_index": start,
                     "end_index": end
                 })
-        st.success("Bead segmentation completed!")
+        st.sidebar.success("Bead segmentation completed!")
 
 # Feature selection
 if "metadata" in st.session_state and st.session_state["metadata"]:
     feature_options = [
         "mean", "std", "var", "min", "max", "median", "skewness", "kurtosis"
     ]
-    selected_features = st.multiselect("Select features to extract", ["All"] + feature_options)
+    selected_features = st.sidebar.multiselect("Select features to extract", ["All"] + feature_options)
     if "All" in selected_features:
         selected_features = feature_options
     
-    if st.button("Extract Features"):
+    if st.sidebar.button("Extract Features"):
         extracted_features = []
         progress_bar = st.progress(0)
         for i, entry in enumerate(st.session_state["metadata"]):
@@ -102,7 +105,7 @@ if "metadata" in st.session_state and st.session_state["metadata"]:
         features_df["file_name"] = features_df["file"].str.split("/").str[-1]
         features_df = features_df.rename(columns={"file": "file_dir"})
         st.session_state["features_df"] = features_df
-        st.success("Feature extraction completed!")
+        st.sidebar.success("Feature extraction completed!")
 
 # Correlation Heatmap
 if "features_df" in st.session_state:
