@@ -141,30 +141,49 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected successfully!")
 
-if "chosen_bead_data" in st.session_state:
-    if st.button("Run Correlation Analysis"):
-        with st.spinner("Calculating correlations..."):
-            feature_names = [
-                "Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", 
-                "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
-                "Spectral Entropy", "Autocorrelation", "Root Mean Square (RMS)", "Slope", 
-                "Moving Average", "Outlier Count", "Extreme Event Duration"
-            ]
+# Feature selection
+feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
+                 "Spectral Entropy", "Autocorrelation", "Root Mean Square (RMS)", "Slope", "Moving Average",
+                 "Outlier Count", "Extreme Event Duration"]
+options = ["All"] + feature_names
+
+selected_features = st.multiselect(
+    "Select features to use for Correlation Analysis",
+    options=options,
+    default="All"
+)
+
+if "All" in selected_features and len(selected_features) > 1:
+    selected_features = ["All"]
+elif "All" not in selected_features and len(selected_features) == 0:
+    st.error("You must select at least one feature.")
+    st.stop()
+if "All" in selected_features:
+    selected_features = feature_names
+selected_indices = [feature_names.index(f) for f in selected_features]
+
+# Pairwise Correlation Analysis
+if st.button("Run Correlation Analysis") and "chosen_bead_data" in st.session_state:
+    with st.spinner("Running Correlation Analysis..."):
+        correlation_results = {}
+        for bead_number in sorted(set(seg["bead_number"] for seg in st.session_state["chosen_bead_data"])):
+            bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
+            signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
+            feature_matrix = np.array([extract_advanced_features(signal) for signal in signals])
+            feature_matrix = feature_matrix[:, selected_indices]  # Select only the chosen features
             
-            feature_matrix = []
-            for bead_data in st.session_state["chosen_bead_data"]:
-                signal = bead_data["data"].iloc[:, 0].values
-                features = extract_advanced_features(signal)
-                feature_matrix.append(features)
-            
-            df_features = pd.DataFrame(feature_matrix, columns=feature_names)
-            correlation_matrix = df_features.corr()
-            
-            # Plot heatmap
-            plt.figure(figsize=(12, 10))
-            sns.heatmap(
-                correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", cbar=True, 
-                xticklabels=feature_names, yticklabels=feature_names
-            )
-            plt.title("Feature Pairwise Correlation Analysis", fontsize=16)
-            st.pyplot(plt)
+            # Compute correlation matrix
+            correlation_matrix = pd.DataFrame(feature_matrix, columns=selected_features).corr()
+            correlation_results[bead_number] = correlation_matrix
+
+        st.session_state["correlation_results"] = correlation_results
+        st.success("Correlation Analysis complete!")
+
+# Visualization
+if "correlation_results" in st.session_state:
+    st.write("## Visualization")
+    for bead_number, correlation_matrix in st.session_state["correlation_results"].items():
+        st.write(f"### Bead Number {bead_number}")
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
