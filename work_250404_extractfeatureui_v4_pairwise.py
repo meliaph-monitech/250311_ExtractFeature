@@ -184,6 +184,34 @@ if "correlation_results" in st.session_state:
     st.write("## Visualization")
     for bead_number, correlation_matrix in st.session_state["correlation_results"].items():
         st.write(f"### Bead Number {bead_number}")
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
+        
+        corr = correlation_matrix
+        mask = np.triu(np.ones_like(corr, dtype=bool))  # Mask for the upper triangle
+        
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sns.heatmap(
+            corr,
+            mask=mask,
+            cmap="coolwarm",
+            annot=False,
+            cbar=True,
+            square=True,
+            linewidths=0.5,
+            ax=ax
+        )
+        
+        # Add circles for correlation values
+        for i in range(len(corr)):
+            for j in range(i + 1):  # Only plot the lower triangle
+                value = corr.iloc[i, j]
+                circle_size = abs(value) * 20  # Adjust size multiplier for better visibility
+                color = plt.cm.coolwarm((value + 1) / 2)  # Map value to colormap
+                ax.add_patch(plt.Circle((j + 0.5, i + 0.5), circle_size / 100, color=color, alpha=0.8))
+        
+        ax.set_xticks(np.arange(len(corr.columns)) + 0.5)
+        ax.set_yticks(np.arange(len(corr.columns)) + 0.5)
+        ax.set_xticklabels(corr.columns, rotation=45, ha="right", fontsize=10)
+        ax.set_yticklabels(corr.columns, fontsize=10)
+        ax.set_title(f"Correlation Heatmap with Circles - Bead {bead_number}", fontsize=14, pad=20)
+        
         st.pyplot(fig)
